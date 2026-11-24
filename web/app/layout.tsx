@@ -1,0 +1,1 @@
+import React from 'react';export default function Layout({children}:{children:React.ReactNode}){return <html><body style={{fontFamily:'Arial',background:'#eef2f6',margin:40,color:'#17243a'}}>{children}</body></html>}

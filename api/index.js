@@ -1,0 +1,8 @@
+const express=require('express'),{Pool}=require('pg'); const app=express(),db=new Pool({connectionString:process.env.DATABASE_URL});app.use(require('cors')());app.use(express.json());
+const wrap=f=>(req,res,next)=>Promise.resolve(f(req,res)).catch(next);
+app.get('/health',wrap(async(q,r)=>{await db.query('SELECT 1');r.json({ok:true})}));
+for(const table of ['shipments','vehicles','drivers'])app.get('/'+table,wrap(async(q,r)=>r.json((await db.query(`SELECT * FROM ${table} ORDER BY id DESC LIMIT 100`)).rows)));
+app.post('/shipments',wrap(async(q,r)=>{const d=q.body.destination;if(typeof d!=='string'||!d.trim()||d.length>300)return r.sendStatus(400);r.status(201).json((await db.query('INSERT INTO shipments(destination) VALUES($1) RETURNING *',[d])).rows[0])}));
+app.post('/shipments/:id/assign',wrap(async(q,r)=>{const {vehicle_id,driver_id}=q.body;if(!Number.isInteger(vehicle_id)||!Number.isInteger(driver_id))return r.sendStatus(400);const x=await db.query("UPDATE shipments SET vehicle_id=$1,driver_id=$2,status='assigned' WHERE id=$3 AND status='pending' RETURNING *",[vehicle_id,driver_id,q.params.id]);r.status(x.rowCount?200:409).json(x.rows[0]||{error:'Not pending'})}));
+app.post('/shipments/:id/status',wrap(async(q,r)=>{const s=q.body.status;const prev={in_transit:'assigned',delivered:'in_transit'}[s];if(!prev)return r.sendStatus(400);const x=await db.query('UPDATE shipments SET status=$1 WHERE id=$2 AND status=$3 RETURNING *',[s,q.params.id,prev]);r.status(x.rowCount?200:409).json(x.rows[0]||{error:'Invalid transition'})}));
+app.use((e,q,r,n)=>r.status(e.code==='23505'?409:e.code==='23503'||e.code==='22P02'?400:500).json({error:'Request failed'}));app.listen(4000,'0.0.0.0');
